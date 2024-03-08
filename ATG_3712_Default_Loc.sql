@@ -1,0 +1,3 @@
+CREATE TABLE "ATG_3712_Default_Loc"(
+ "LOCATION" CHAR(2)
+);
