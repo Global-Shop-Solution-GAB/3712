@@ -1,0 +1,112 @@
+Program.Sub.ScreenSU.Start
+gui.fLoc..create
+gui.fLoc..caption("Default Loc")
+gui.fLoc..size(2655,2145)
+gui.fLoc..position(0,0)
+gui.fLoc..event(unload,floc_unload)
+gui.fLoc..alwaysontop(False)
+gui.fLoc..fontname("Arial")
+gui.fLoc..fontsize(8)
+gui.fLoc..forecolor(0)
+gui.fLoc..fontstyle(,,,,)
+gui.fLoc..BackColor(-2147483633)
+gui.fLoc..controlbox(True)
+gui.fLoc..maxbutton(False)
+gui.fLoc..minbutton(False)
+gui.fLoc..mousepointer(0)
+gui.fLoc..moveable(True)
+gui.fLoc..sizeable(False)
+gui.fLoc..ShowInTaskBar(True)
+gui.fLoc..titlebar(True)
+gui.fLoc.lblLoc.create(label,"Location",True,765,255,1,110,140,True,0,Arial,8,-2147483633,0)
+gui.fLoc.ddlLoc.create(dropdownlist)
+gui.fLoc.ddlLoc.visible(True)
+gui.fLoc.ddlLoc.size(1020,330)
+gui.fLoc.ddlLoc.zorder(0)
+gui.fLoc.ddlLoc.position(95,350)
+gui.fLoc.ddlLoc.enabled(True)
+gui.fLoc.ddlLoc.fontname("Arial")
+gui.fLoc.ddlLoc.fontsize(8)
+gui.fLoc.cmdSave.create(button)
+gui.fLoc.cmdSave.caption("Save")
+gui.fLoc.cmdSave.visible(True)
+gui.fLoc.cmdSave.size(855,375)
+gui.fLoc.cmdSave.zorder(0)
+gui.fLoc.cmdSave.position(130,1075)
+gui.fLoc.cmdSave.enabled(True)
+gui.fLoc.cmdSave.fontname("Arial")
+gui.fLoc.cmdSave.fontsize(8)
+gui.fLoc.cmdSave.event(click,cmdsave_click)
+
+
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'Coded by: MLA
+'Project Start Date: 10/26/2010
+F.ODBC.Connection!Con.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+F.Intrinsic.Control.CallSub(Load)
+Gui.fLoc..Show
+
+Program.Sub.Main.End
+
+program.sub.floc_unload.start
+F.ODBC.Connection!Con.Close
+F.Intrinsic.Control.End
+
+program.sub.floc_unload.end
+
+program.sub.cmdsave_click.start
+V.Local.sError.Declare(String)
+
+Function.Intrinsic.Control.SetErrorHandler("Save_Err")
+Function.Intrinsic.Control.ClearErrors
+
+F.ODBC.Connection!Con.Execute("DELETE ATG_3712_Default_Loc")
+F.ODBC.Connection!Con.OpenRecordsetRW("rst","Select * From ATG_3712_Default_Loc")
+F.ODBC.Con!rst.AddNew
+F.ODBC.Con!rst.Set!LOCATION(V.Screen.fLoc!ddlLoc.Text)
+F.ODBC.Con!rst.Update
+F.ODBC.Con!rst.Close
+
+
+Function.Intrinsic.Control.ExitSub
+
+Function.Intrinsic.Control.Label("Save_Err")
+Function.Intrinsic.Control.If(Variable.Ambient.ErrorNumber,"<>",0)
+	Function.Intrinsic.String.Concat("Error Occurred ",Variable.Ambient.ErrorNumber," with description ",Variable.Ambient.ErrorDescription,Variable.Local.sError)
+Function.Intrinsic.Control.EndIf
+
+
+
+program.sub.cmdsave_click.end
+
+Program.Sub.Load.Start
+V.Local.sError.Declare(String)
+
+Function.Intrinsic.Control.SetErrorHandler("Load_Err")
+Function.Intrinsic.Control.ClearErrors
+
+F.ODBC.Connection!Con.OpenRecordsetRO("rst","Select * from V_LOCATIONS order by LOCATION")
+F.Intrinsic.Control.DoUntil(V.ODBC.Con!rst.EOF,=,"True")
+	Gui.fLoc.ddlLoc.AddItem(V.ODBC.Con!rst.FieldValTrim!LOCATION)
+	F.ODBC.Con!rst.MoveNext
+F.Intrinsic.Control.Loop
+F.ODBC.Con!rst.Close
+
+Function.Intrinsic.Control.ExitSub
+
+Function.Intrinsic.Control.Label("Load_Err")
+Function.Intrinsic.Control.If(Variable.Ambient.ErrorNumber,"<>",0)
+	Function.Intrinsic.String.Concat("Error Occurred ",Variable.Ambient.ErrorNumber," with description ",Variable.Ambient.ErrorDescription,Variable.Local.sError)
+Function.Intrinsic.Control.EndIf
+
+
+
+Program.Sub.Load.End
+
+
