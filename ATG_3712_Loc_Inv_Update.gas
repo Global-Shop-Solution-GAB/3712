@@ -1,0 +1,154 @@
+Program.Sub.ScreenSU.Start
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'Coded by: MLA
+'Project Start Date: 10/26/2010
+'Hooks - 10170: pre-save hook for inventory. 10185: post-save hook for inventory.
+F.Intrinsic.Control.If(V.Caller.Switches,"=","O")
+	F.ODBC.Connection!Con.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+	
+	'Pre-save hook that will prevent a non-default location part from saving
+	F.Intrinsic.Control.If(V.Caller.Hook,=,10170)
+		F.Intrinsic.Control.CallSub(Check)
+	
+	'Post save hook that runs Update and updates data as needed
+	F.Intrinsic.Control.ElseIf(V.Caller.Hook,=,10185)
+		F.Intrinsic.Control.CallSub(Update)
+	
+	F.Intrinsic.Control.EndIf
+	
+F.Intrinsic.Control.Else
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndIf
+
+Program.Sub.Main.End
+
+Program.Sub.Update.Start
+V.Local.sError.Declare(String)
+V.Local.sGSSPart.Declare(String)
+V.Local.sDefaultLoc.Declare(String)
+V.Local.sPartLoc.Declare(String)
+V.Local.sSQL.Declare(String)
+V.Local.sAltDesc1.Declare(String,"")
+V.Local.sAltDesc2.Declare(String,"")
+Function.Intrinsic.Control.SetErrorHandler("Update_Err")
+Function.Intrinsic.Control.ClearErrors
+
+'Set sPartLoc to the passed location from screen and sGSSPart to the part/part+rev from the screen - pad to 2 to the right using spaces as database stores exactly 2 chars no matter the location
+V.Local.sPartLoc.Set(V.Passed.000009)
+F.Intrinsic.String.RPad(V.Local.sPartLoc," ",2,V.Local.sPartLoc)
+F.Intrinsic.Control.If(V.Passed.000008,=,"")
+	V.Local.sGSSPart.Set(V.Passed.000007)
+F.Intrinsic.Control.Else
+	F.Intrinsic.String.GSSPartString(V.Passed.000007,V.Passed.000008,V.Local.sGSSPart)
+F.Intrinsic.Control.EndIf
+
+'This sub will be reached in two scenarios: 1) The part is a part in the default location in which case all other parts should be updated. 2) The part is a part that does not exist
+'in the default location in which case nothing should be done.
+
+'Verify that the part's location is the default location so that we can update everything. If it is not we don't want to update anything else. We can assume that ATG_3712_Default_Loc is not empty
+'as the Check sub will always run before this sub and will prevent this sub from running if ATG_3712_Default_Loc is empty
+F.ODBC.Connection!Con.OpenRecordsetRO("rstDefaultLoc","SELECT Location FROM ATG_3712_Default_Loc")
+V.Local.sDefaultLoc.Set(V.ODBC.Con!rstDefaultLoc.FieldVal!Location)
+F.Intrinsic.String.RPad(V.Local.sDefaultLoc," ",2,V.Local.sDefaultLoc)
+F.ODBC.Con!rstDefaultLoc.Close
+
+F.Intrinsic.Control.If(V.Local.sPartLoc,=,V.Local.sDefaultLoc)
+'We now know that the part saved is in the default location and we should update all other parts with the same part number in different locations accordingly
+
+	'Retrieve the alt desc 1 and 2 values from INVENTORY_MST2 as they are not available as a passed variable in 2016.1 and later
+	F.Intrinsic.String.Concat("SELECT Description_2, Description_3 FROM Inventory_MST2 WHERE Part = '",V.Local.sGSSPart,"' AND Location = '",V.Local.sPartLoc,"'",V.Local.sSQL)
+	F.ODBC.Connection!Con.OpenRecordsetRO("rstAltDesc",V.Local.sSQL)
+	F.Intrinsic.Control.If(V.ODBC.Con!rstAltDesc.EOF,=,False)
+		V.Local.sAltDesc1.Set(V.ODBC.Con!rstAltDesc.FieldVal!Description_2)
+		V.Local.sAltDesc2.Set(V.ODBC.Con!rstAltDesc.FieldVal!Description_3)
+	F.Intrinsic.Control.EndIf
+	F.ODBC.Con!rstAltDesc.Close
+	
+	F.Intrinsic.String.Concat("UPDATE INVENTORY_MSTR SET PRODUCT_LINE = '",V.Passed.000011.Trim,"', DESCRIPTION = '",V.Passed.000012.Trim,"', UM_INVENTORY = '",V.Passed.000014,"', AMT_PRICE = '",V.Passed.000017.Float,"', CODE_SORT = '",V.Passed.000025,"' Where PART = '",V.Local.sGSSPart,"' and LOCATION <> '",V.Local.sDefaultLoc,"'",V.Local.sSQL)
+	F.ODBC.Connection!Con.Execute(V.Local.sSQL)
+	F.Intrinsic.String.Concat("UPDATE INVENTORY_MST2 SET NAME_VENDOR = '",V.Passed.000026,"', TEXT_INFO1 = '",V.Passed.000027,"', TEXT_INFO2 = '",V.Passed.000028,"', DESCRIPTION_2 = '",V.Local.sAltDesc1,"', DESCRIPTION_3 = '",V.Local.sAltDesc2,"' where PART = '",V.Local.sGSSPart,"' and LOCATION <> '",V.Local.sDefaultLoc,"'",V.Local.sSQL)
+	F.ODBC.Connection!Con.Execute(V.Local.sSQL)
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.CallSub(Unload)
+
+Function.Intrinsic.Control.ExitSub
+
+Function.Intrinsic.Control.Label("Update_Err")
+Function.Intrinsic.Control.If(Variable.Ambient.ErrorNumber,"<>",0)
+	Function.Intrinsic.String.Concat("Error Occurred ",Variable.Ambient.ErrorNumber," with description ",Variable.Ambient.ErrorDescription,Variable.Local.sError)
+Function.Intrinsic.Control.EndIf
+
+
+
+Program.Sub.Update.End
+
+'Checks to make sure that the save that is about to happen is valid (part being saved is in default loc or part being saved does not exist in the default location)
+Program.Sub.Check.Start
+F.Intrinsic.Control.SetErrorHandler("Check_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.sSQL.Declare(String)
+V.Local.sGSSPart.Declare(String)
+V.Local.sDefaultLoc.Declare(String)
+V.Local.sPartLoc.Declare(String)
+
+'Set sPartLoc to the passed location from screen and sGSSPart to the part/part+rev from the screen - pad to 2 to the right using spaces as database stores exactly 2 chars no matter the location
+V.Local.sPartLoc.Set(V.Passed.000009)
+F.Intrinsic.String.RPad(V.Local.sPartLoc," ",2,V.Local.sPartLoc)
+F.Intrinsic.Control.If(V.Passed.000008,=,"")
+	V.Local.sGSSPart.Set(V.Passed.000007)
+F.Intrinsic.Control.Else
+	F.Intrinsic.String.GSSPartString(V.Passed.000007,V.Passed.000008,V.Local.sGSSPart)
+F.Intrinsic.Control.EndIf
+
+'Check to see if the part is not in the default location by retrieving default location and comparing
+F.ODBC.Connection!Con.OpenRecordSetRO("rstDefaultLoc","SELECT Location FROM ATG_3712_Default_Loc")
+F.Intrinsic.Control.If(V.ODBC.Con!rstDefaultLoc.EOF,=,False)
+	V.Local.sDefaultLoc.Set(V.ODBC.Con!rstDefaultLoc.FieldVal!Location)
+	F.Intrinsic.String.RPad(V.Local.sDefaultLoc," ",2,V.Local.sDefaultLoc)
+	
+F.Intrinsic.Control.Else
+	'Here the default location is not set and needs to be set, we close out accordingly as this should never happen.
+	F.Intrinsic.UI.Msgbox("No default location set. Unable to process, part not saved.","Error")
+	V.Passed.777777.Set(1)
+	F.ODBC.Con!rstDefaultLoc.Close
+	F.Intrinsic.Control.CallSub(Unload)
+F.Intrinsic.Control.EndIf
+F.ODBC.Con!rstDefaultLoc.Close
+
+'We want to prevent saving in the case that the parts loc is not the default loc AND that part number exists for the default LOC.
+F.Intrinsic.Control.If(V.Local.sPartLoc,!=,V.Local.sDefaultLoc)
+	'We know that the parts loc is not the default loc. We now verify whether or not the part exists in the default Loc. If it does, we cancel the save.
+	F.Intrinsic.String.Concat("SELECT Part FROM V_Inventory_Mstr WHERE Part = '",V.Local.sGSSPart,"' AND Location = '",V.Local.sDefaultLoc,"'",V.Local.sSQL)
+	F.ODBC.Connection!Con.OpenRecordSetRO("rstInv",V.Local.sSQL)
+	F.Intrinsic.Control.If(V.ODBC.Con!rstInv.EOF,=,False)
+		'If something is returned then we know that a part exists in the default location and thus we should prevent the save from happening
+		V.Passed.777777.Set(1)
+		F.Intrinsic.UI.Msgbox("Unable to save.  Please make all changes through default location.","Save Error")
+	F.Intrinsic.Control.EndIf
+	F.ODBC.Con!rstInv.Close
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.CallSub(Unload)
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Check_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: ATG_3712_Loc_Inv_Update.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Check.End
+
+Program.Sub.Unload.Start
+f.ODBC.Connection!Con.Close
+F.Intrinsic.Control.End
+
+Program.Sub.Unload.End
